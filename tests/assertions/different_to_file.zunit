@@ -1,0 +1,26 @@
+#!/usr/bin/env zunit
+
+@test 'Test _zunit_assert_different_to_file files success' {
+  run assert 'in.zunit' different_to_file 'is_dir.zunit'
+  assert $state equals 0
+  assert $output is_empty
+}
+
+@test 'Test _zunit_assert_different_to_file directory success' {
+  run assert './' different_to_file './..'
+  assert $state equals 0
+  assert $output is_empty
+}
+}
+
+@test 'Test _zunit_assert_different_to_file file failure' {
+  run assert 'in.zunit' different_to_file 'in.zunit'
+  assert $state equals 1
+  assert $output same_as "'in.zunit' and 'in.zunit' do not differ"
+}
+
+@test 'Test _zunit_assert_different_to_file directory failure' {
+  run assert './' different_to_file './'
+  assert $state equals 1
+  assert $output same_as "'./' and './' do not differ"
+}

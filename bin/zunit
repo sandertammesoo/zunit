@@ -403,6 +403,33 @@ function _zunit_assert_same_as() {
     echo "'$value' is not the same as '$comparison'"
     exit 1
 } # ]]]
+# FUNCTION: _zunit_assert_different_to_file [[[
+# Assert that two files/directory trees are the same
+function _zunit_assert_different_to_file() {
+    local pathname_val=$1 filepath_val
+    local pathname_cmp=$2 filepath_cmp
+
+    # If filepath_val is relative, prepend the test directory
+    if [[ "${pathname_val:0:1}" != "/" ]]; then
+        filepath_val="$testdir/${pathname_val}"
+    else
+        filepath_val="$pathname_val"
+    fi
+
+    # If filepath_cmp is relative, prepend the test directory
+    if [[ "${pathname_cmp:0:1}" != "/" ]]; then
+        filepath_cmp="$testdir/${pathname_cmp}"
+    else
+        filepath_cmp="$pathname_cmp"
+    fi
+
+    if diff -qr --exclude=".backups" "$filepath_val" "$filepath_cmp" >/dev/null; then
+        echo "'$pathname_val' and '$pathname_cmp' do not differ"
+        exit 1
+    else
+        return 0
+    fi
+} # ]]]
 ##########################################
 # Functions for handling internal events #
 ##########################################
