@@ -71,6 +71,23 @@ function _zunit_assert_exists() {
     echo "'$pathname' does not exist"
     exit 1
 } # ]]]
+# FUNCTION: _zunit_assert_does_not_exist [[[
+# Assert the a path does not exist
+function _zunit_assert_does_not_exist() {
+    local pathname=$1 filepath
+
+    # If filepath is relative, prepend the test directory
+    if [[ "${pathname:0:1}" != "/" ]]; then
+        filepath="$testdir/${pathname}"
+    else
+        filepath="$pathname"
+    fi
+
+    [[ ! -e "$filepath" ]] && return 0
+
+    echo "'$pathname' exists"
+    exit 1
+} # ]]]
 # FUNCTION: _zunit_assert_in [[[
 # Assert that a value is found in an array
 function _zunit_assert_in() {
