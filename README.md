@@ -484,6 +484,35 @@ make test
 ./bin/zunit --version
 ```
 
+#### Version Management
+
+ZUnit includes automated version management tools:
+
+```zsh
+# Check current version and release status
+make check-version
+# Provides intelligent guidance based on:
+# - Current version number
+# - Local vs remote tag status  
+# - Git authentication setup
+# - GPG configuration
+
+# Automated version bumping
+make bump-patch   # Bug fixes: 1.2.3 → 1.2.4
+make bump-minor   # New features: 1.2.3 → 1.3.0  
+make bump-major   # Breaking changes: 1.2.3 → 2.0.0
+
+# Smart cleanup for development
+make cleanup-release        # Clean local tags/artifacts
+make cleanup-release-force  # Remove remote tags (dangerous!)
+```
+
+The `check-version` target now provides context-aware guidance:
+- **Local + Remote tags**: Suggests version bumping only
+- **Local-only tags**: Suggests cleanup or version bumping
+- **Remote-only tags**: Suggests version bumping only
+- **No existing tags**: Confirms version is available
+
 #### Code Style Guidelines
 
 - Follow existing ZSH coding patterns in the codebase
@@ -566,13 +595,16 @@ make check-version
 # Follow the guidance from check-version output:
 git remote set-url origin git@github.com:sandertammesoo/zunit.git
 
-# 4. Update version number
-echo "0.11.0" > VERSION
+# 4. Update version number using automated bump targets
+make bump-patch   # Increment patch version (x.y.z → x.y.z+1)
+make bump-minor   # Increment minor version (x.y.z → x.y+1.0)  
+make bump-major   # Increment major version (x.y.z → x+1.0.0)
+# OR manually: echo "0.11.0" > VERSION
 
 # 5. Update changelog/release notes if applicable
 # Edit CHANGELOG.md or prepare GitHub release notes
 
-# 6. Final status check
+# 6. Final status check - now includes smart tag detection
 make check-version
 ```
 
@@ -612,32 +644,35 @@ make cleanup-release
 #### Release Troubleshooting
 
 ```zsh
-# Check what will be included in release (includes GPG and git auth status)
+# Check release status - now includes smart local/remote tag detection
 make check-version
+# Provides context-aware guidance based on tag locations
 
-# If release fails due to authentication issues
-# The Makefile will provide specific guidance for:
+# Version management
+make bump-patch        # Create new patch version automatically
+make bump-minor        # Create new minor version automatically  
+make bump-major        # Create new major version automatically
+
+# Clean up release issues
+make cleanup-release        # Safe cleanup (local tags only)
+make cleanup-release-force  # Remove remote tags (USE WITH CAUTION!)
+
+# Authentication setup
+# The Makefile provides specific guidance for:
 # - HTTPS authentication (Personal Access Tokens)
-# - SSH key setup
+# - SSH key setup (recommended)
 # - Credential helper configuration
 
-# Clean up failed release attempts
-make cleanup-release
-
-# Set up GPG for signed releases
+# GPG setup for signed releases
 make setup-gpg
 
 # Switch to SSH for easier authentication (recommended)
 git remote set-url origin git@github.com:sandertammesoo/zunit.git
 
-# View current git status
-git status
-
-# See recent commits
-git log --oneline -10
-
-# Clean up build artifacts if needed
-make clean
+# Development status
+git status              # View current changes
+git log --oneline -10   # See recent commits
+make clean             # Clean up build artifacts
 ```
 
 ### Project Structure for Contributors
@@ -682,14 +717,30 @@ The build system combines multiple source files into a single executable:
    - Makes file executable
 
 3. **Available Make Targets**:
+   
+   **Development:**
    - `make build` - Build the executable
-   - `make test` - Run test suite
+   - `make test` - Run test suite  
    - `make install` - Install to configured prefix
    - `make clean` - Remove build artifacts
-   - `make check-version` - Check release readiness (version, GPG, git auth)
-   - `make setup-gpg` - GPG configuration guidance
-   - `make cleanup-release` - Clean up failed release attempts
+   
+   **Version Management:**
+   - `make bump-patch` - Increment patch version (x.y.z → x.y.z+1)
+   - `make bump-minor` - Increment minor version (x.y.z → x.y+1.0)
+   - `make bump-major` - Increment major version (x.y.z → x+1.0.0)
+   - `make bump-version` - Alias for bump-patch
+   
+   **Release Process:**
+   - `make check-version` - Smart release readiness check (tags, GPG, auth)
    - `make full-release` - Complete automated release workflow
+   - `make release` - Build, test, commit, push to develop
+   - `make publish` - Create tag, merge to master, push both
+   - `make deploy` - Create release archives and GPG signatures
+   
+   **Cleanup & Setup:**
+   - `make cleanup-release` - Clean up local release artifacts
+   - `make cleanup-release-force` - Remove remote tags (dangerous!)
+   - `make setup-gpg` - GPG configuration guidance
 
 ## License
 

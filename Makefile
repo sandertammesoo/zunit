@@ -71,7 +71,7 @@ define isede
 endef
 
 # Define main build targets (these are not actual files)
-.PHONY: all build clean install itests tests uninstall release publish deploy check-version full-release setup-gpg cleanup-release
+.PHONY: all build clean install itests tests uninstall release publish deploy check-version full-release setup-gpg cleanup-release cleanup-release-force bump-version bump-patch bump-minor bump-major
 
 # Default target: Run 'build' when 'make' is executed
 all: build
@@ -80,13 +80,22 @@ all: build
 # RELEASE WORKFLOW
 # 
 # 1. (Optional) Run: make setup-gpg    # Configure GPG for signing
-# 2. Update VERSION file with desired version number  
+# 2. Bump version number:              # Automated version management
+#    - make bump-patch                 # x.y.z → x.y.z+1 (bug fixes)
+#    - make bump-minor                 # x.y.z → x.y+1.0 (new features)
+#    - make bump-major                 # x.y.z → x+1.0.0 (breaking changes)
+#    OR manually update VERSION file  
 # 3. Run: make check-version           # Check status (GPG, git auth, etc.)
 # 4. Run: make full-release            # Complete workflow
 #    OR run individual steps:
-#    - make release                    # Build and commit executable  
-#    - make publish                    # Create and push git tag
+#    - make release                    # Build, commit, and push to develop
+#    - make publish                    # Create git tag, merge to master, push both
 #    - make deploy                     # Create release archives
+#
+# What gets pushed where:
+# - make release: Pushes code changes to origin/develop
+# - make publish: Merges to master, pushes master + git tag to origin
+# - Both require authentication (SSH recommended)
 #
 # If release fails: make cleanup-release  # Clean up and retry
 # Note: GPG signing is optional - releases work without it
@@ -110,10 +119,35 @@ release: build test
 	@echo "Adding built executable to git..."
 	git add ${EXEC}
 	git commit -S -m "Build release ${VERSION}" || echo "No changes to commit"
-	@echo "Release ${VERSION} prepared successfully"
+	@echo "Pushing changes to develop branch..."
+	@if git status --porcelain -b | head -1 | grep -q "ahead"; then \
+		echo "Local commits found, pushing to origin..."; \
+		if ! git push origin develop 2>/dev/null; then \
+			echo ""; \
+			echo "❌ Failed to push to develop branch. This is likely an authentication issue:"; \
+			echo ""; \
+			echo "For HTTPS remotes:"; \
+			echo "  1. Create a Personal Access Token at: https://github.com/settings/tokens"; \
+			echo "  2. Use token as password when prompted"; \
+			echo "  3. Or configure credential helper: git config --global credential.helper store"; \
+			echo ""; \
+			echo "For SSH remotes (recommended):"; \
+			echo "  1. Switch to SSH: git remote set-url origin git@github.com:sandertammesoo/zunit.git"; \
+			echo "  2. Set up SSH key: https://docs.github.com/en/authentication/connecting-to-github-with-ssh"; \
+			echo ""; \
+			echo "To retry after fixing auth: make release"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "No local commits to push"; \
+	fi
+	@echo "✅ Release ${VERSION} prepared and pushed to develop branch"
 	@echo "Next steps:"
-	@echo "  make publish  # Create and push git tag"
+	@echo "  make publish  # Create git tag, merge to master, and push both"
 	@echo "  make deploy   # Create release archives"
+	@echo ""
+	@echo "📋 Quick link to create GitHub release:"
+	@echo "   https://github.com/sandertammesoo/zunit/releases/new?tag=v${VERSION}"
 
 # Create and push a git tag for the release
 publish:
@@ -167,9 +201,38 @@ publish:
 		echo "To retry after fixing auth: make publish"; \
 		exit 1; \
 	fi
-	@echo "✅ Tag v${VERSION} published successfully"
-	@echo "Next step:"
+	@echo "Merging to master branch..."
+	@git checkout master && \
+	git merge --no-ff develop -m "Release ${VERSION}" && \
+	echo "Pushing master branch..." && \
+	if ! git push origin master 2>/dev/null; then \
+		echo ""; \
+		echo "❌ Failed to push master branch. This is likely an authentication issue:"; \
+		echo ""; \
+		echo "For HTTPS remotes:"; \
+		echo "  1. Create a Personal Access Token at: https://github.com/settings/tokens"; \
+		echo "  2. Use token as password when prompted"; \
+		echo "  3. Or configure credential helper: git config --global credential.helper store"; \
+		echo ""; \
+		echo "For SSH remotes (recommended):"; \
+		echo "  1. Switch to SSH: git remote set-url origin git@github.com:sandertammesoo/zunit.git"; \
+		echo "  2. Set up SSH key: https://docs.github.com/en/authentication/connecting-to-github-with-ssh"; \
+		echo ""; \
+		echo "To retry after fixing auth: git checkout develop && make publish"; \
+		git checkout develop; \
+		exit 1; \
+	fi && \
+	git checkout develop
+	@echo ""
+	@echo "✅ Release v${VERSION} published successfully!"
+	@echo "   📦 Tag created and pushed"
+	@echo "   🔀 Merged to master and pushed" 
+	@echo ""
+	@echo "🎉 Next steps:"
 	@echo "  make deploy   # Create release archives"
+	@echo ""
+	@echo "🚀 Create GitHub Release:"
+	@echo "   https://github.com/sandertammesoo/zunit/releases/new?tag=v${VERSION}"
 
 # Create release archives and signatures
 deploy:
@@ -209,7 +272,7 @@ deploy:
 		echo "   Skipping signature creation for now..."; \
 	fi
 	@echo ""
-	@echo "Deployment artifacts created:"
+	@echo "✅ Deployment artifacts created:"
 	@echo "  📦 zunit-${VERSION}.tar.gz"
 	@if [ -f "zunit-${VERSION}.tar.gz.asc" ]; then \
 		echo "  🔐 zunit-${VERSION}.tar.gz.asc"; \
@@ -217,7 +280,10 @@ deploy:
 		echo "  ⚠️  No signature file (GPG not configured)"; \
 	fi
 	@echo ""
-	@echo "Upload these files to GitHub releases or your distribution method"
+	@echo "🎉 Release ${VERSION} is now complete!"
+	@echo ""
+	@echo "📋 Create GitHub Release with these artifacts:"
+	@echo "   https://github.com/sandertammesoo/zunit/releases/new?tag=v${VERSION}"
 
 # Check version and git status before release
 check-version:
@@ -226,9 +292,15 @@ check-version:
 	@echo "Git status:"
 	@git status --short
 	@echo ""
+	@echo "Unpushed commits:"
+	@git log --oneline origin/develop..HEAD 2>/dev/null || echo "  (Unable to check - may need to fetch origin first)"
+	@echo ""
 	@if [ -z "${VERSION}" ] || [ "${VERSION}" = "develop" ]; then \
 		echo "⚠️  VERSION is not set to a release version"; \
-		echo "   Update the VERSION file with the desired version number"; \
+		echo "   📝 Update the VERSION file or use version bump targets:"; \
+		echo "      make bump-patch  # Increment patch (x.y.z → x.y.z+1)"; \
+		echo "      make bump-minor  # Increment minor (x.y.z → x.y+1.0)"; \
+		echo "      make bump-major  # Increment major (x.y.z → x+1.0.0)"; \
 	else \
 		echo "✅ VERSION is set to: ${VERSION}"; \
 	fi
@@ -237,8 +309,24 @@ check-version:
 	else \
 		echo "✅ Working directory is clean"; \
 	fi
-	@if git tag -l | grep -q "^v${VERSION}$$"; then \
-		echo "⚠️  Tag v${VERSION} already exists"; \
+	@local_tag_exists=$$(git tag -l | grep -q "^v${VERSION}$$" && echo "true" || echo "false"); \
+	remote_tag_exists=$$(git ls-remote --tags origin 2>/dev/null | grep -q "refs/tags/v${VERSION}$$" && echo "true" || echo "false"); \
+	if [ "$$local_tag_exists" = "true" ] && [ "$$remote_tag_exists" = "true" ]; then \
+		echo "⚠️  Tag v${VERSION} exists locally and on remote"; \
+		echo "   📝 Use version bump targets to create a new version:"; \
+		echo "      make bump-patch  # New patch release (recommended)"; \
+		echo "      make bump-minor  # New minor release"; \
+		echo "      make bump-major  # New major release"; \
+	elif [ "$$local_tag_exists" = "true" ] && [ "$$remote_tag_exists" = "false" ]; then \
+		echo "⚠️  Tag v${VERSION} exists locally but not on remote"; \
+		echo "   🧹 Clean up local tag: make cleanup-release"; \
+		echo "   📝 Or bump version: make bump-patch"; \
+	elif [ "$$local_tag_exists" = "false" ] && [ "$$remote_tag_exists" = "true" ]; then \
+		echo "⚠️  Tag v${VERSION} exists on remote but not locally"; \
+		echo "   📝 Use version bump targets to create a new version:"; \
+		echo "      make bump-patch  # New patch release (recommended)"; \
+		echo "      make bump-minor  # New minor release"; \
+		echo "      make bump-major  # New major release"; \
 	else \
 		echo "✅ Tag v${VERSION} is available"; \
 	fi
@@ -291,17 +379,24 @@ check-version:
 # Complete release workflow: release -> publish -> deploy
 full-release: check-version release publish deploy
 	@echo ""
-	@echo "🎉 Release ${VERSION} completed successfully!"
+	@echo "🎉🎉🎉 Release ${VERSION} completed successfully! 🎉🎉🎉"
 	@echo ""
-	@echo "Release artifacts created:"
-	@echo "  📦 zunit-${VERSION}.tar.gz"
-	@echo "  🔐 zunit-${VERSION}.tar.gz.asc"
-	@echo "  🏷️  Git tag: v${VERSION}"
+	@echo "✅ What was accomplished:"
+	@echo "  📦 Built and tested release ${VERSION}"
+	@echo "  🔀 Merged develop → master"  
+	@echo "  🏷️  Created and pushed git tag v${VERSION}"
+	@echo "  📦 Generated release archive: zunit-${VERSION}.tar.gz"
+	@if [ -f "zunit-${VERSION}.tar.gz.asc" ]; then \
+		echo "  🔐 Generated GPG signature: zunit-${VERSION}.tar.gz.asc"; \
+	fi
 	@echo ""
-	@echo "Next steps:"
-	@echo "  1. Create a GitHub release at: https://github.com/sandertammesoo/zunit/releases/new"
-	@echo "  2. Upload the tar.gz and .asc files"
-	@echo "  3. Update package managers (Homebrew, etc.)"
+	@echo "🚀 NEXT: Create GitHub Release"
+	@echo "   📋 Click here: https://github.com/sandertammesoo/zunit/releases/new?tag=v${VERSION}"
+	@echo ""
+	@echo "📝 Additional steps:"
+	@echo "  • Upload the .tar.gz and .asc files to the GitHub release"
+	@echo "  • Update package managers (Homebrew, AUR, etc.)"
+	@echo "  • Announce the release!"
 
 # Setup GPG for signing releases (guidance only)
 setup-gpg:
@@ -356,7 +451,10 @@ cleanup-release:
 	fi
 	@if git ls-remote --tags origin | grep -q "refs/tags/v${VERSION}$$"; then \
 		echo "⚠️  Remote tag v${VERSION} exists on origin"; \
-		echo "To remove it: git push origin --delete v${VERSION}"; \
+		echo "   📝 Options:"; \
+		echo "      Remove remote tag: git push origin --delete v${VERSION}"; \
+		echo "      Or create new version: make bump-patch"; \
+		echo "   ⚠️  Warning: Removing remote tags can affect other users!"; \
 	else \
 		echo "✅ No remote tag v${VERSION} found"; \
 	fi
@@ -369,6 +467,106 @@ cleanup-release:
 		rm -f "zunit-${VERSION}.tar.gz.asc"; \
 	fi
 	@echo "✅ Cleanup completed. You can now retry the release."
+
+# Force cleanup including remote tags (USE WITH CAUTION!)
+cleanup-release-force:
+	@echo "🧹💥 FORCE cleaning up release for ${VERSION} (including remote tags)..."
+	@if [ -z "${VERSION}" ] || [ "${VERSION}" = "develop" ]; then \
+		echo "Error: VERSION must be set"; \
+		exit 1; \
+	fi
+	@echo "⚠️  WARNING: This will remove tags from remote repository!"
+	@echo "⚠️  This may affect other users who have already pulled the tag."
+	@echo ""
+	@read -p "Are you sure you want to continue? (type 'yes' to confirm): " confirm; \
+	if [ "$$confirm" != "yes" ]; then \
+		echo "❌ Cleanup cancelled"; \
+		exit 1; \
+	fi
+	@if git tag -l | grep -q "^v${VERSION}$$"; then \
+		echo "Removing local tag v${VERSION}..."; \
+		git tag -d "v${VERSION}"; \
+	fi
+	@if git ls-remote --tags origin | grep -q "refs/tags/v${VERSION}$$"; then \
+		echo "Removing remote tag v${VERSION}..."; \
+		git push origin --delete "v${VERSION}"; \
+	fi
+	@if [ -f "zunit-${VERSION}.tar.gz" ]; then \
+		echo "Removing zunit-${VERSION}.tar.gz..."; \
+		rm -f "zunit-${VERSION}.tar.gz"; \
+	fi
+	@if [ -f "zunit-${VERSION}.tar.gz.asc" ]; then \
+		echo "Removing zunit-${VERSION}.tar.gz.asc..."; \
+		rm -f "zunit-${VERSION}.tar.gz.asc"; \
+	fi
+	@echo "✅ Force cleanup completed. You can now retry the release."
+
+######################################################################
+# VERSION MANAGEMENT
+# 
+# Automatically increment version numbers:
+# - make bump-version    # Increment patch version (default)
+# - make bump-patch      # Increment patch version (x.y.z -> x.y.z+1)
+# - make bump-minor      # Increment minor version (x.y.z -> x.y+1.0)
+# - make bump-major      # Increment major version (x.y.z -> x+1.0.0)
+######################################################################
+
+# Default version bump (patch)
+bump-version: bump-patch
+
+# Bump patch version (x.y.z -> x.y.z+1)
+bump-patch:
+	@echo "🔢 Bumping patch version..."
+	@current_version=$$(cat VERSION); \
+	if [[ "$$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$$ ]]; then \
+		major=$${BASH_REMATCH[1]}; \
+		minor=$${BASH_REMATCH[2]}; \
+		patch=$${BASH_REMATCH[3]}; \
+		new_patch=$$((patch + 1)); \
+		new_version="$$major.$$minor.$$new_patch"; \
+		echo "$$new_version" > VERSION; \
+		echo "✅ Version bumped: $$current_version → $$new_version"; \
+		git add VERSION && git commit -m "Bump version to $$new_version"; \
+	else \
+		echo "❌ Error: VERSION file contains invalid format: $$current_version"; \
+		echo "   Expected format: x.y.z (e.g., 1.2.3)"; \
+		exit 1; \
+	fi
+
+# Bump minor version (x.y.z -> x.y+1.0)
+bump-minor:
+	@echo "🔢 Bumping minor version..."
+	@current_version=$$(cat VERSION); \
+	if [[ "$$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$$ ]]; then \
+		major=$${BASH_REMATCH[1]}; \
+		minor=$${BASH_REMATCH[2]}; \
+		new_minor=$$((minor + 1)); \
+		new_version="$$major.$$new_minor.0"; \
+		echo "$$new_version" > VERSION; \
+		echo "✅ Version bumped: $$current_version → $$new_version"; \
+		git add VERSION && git commit -m "Bump version to $$new_version"; \
+	else \
+		echo "❌ Error: VERSION file contains invalid format: $$current_version"; \
+		echo "   Expected format: x.y.z (e.g., 1.2.3)"; \
+		exit 1; \
+	fi
+
+# Bump major version (x.y.z -> x+1.0.0)
+bump-major:
+	@echo "🔢 Bumping major version..."
+	@current_version=$$(cat VERSION); \
+	if [[ "$$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$$ ]]; then \
+		major=$${BASH_REMATCH[1]}; \
+		new_major=$$((major + 1)); \
+		new_version="$$new_major.0.0"; \
+		echo "$$new_version" > VERSION; \
+		echo "✅ Version bumped: $$current_version → $$new_version"; \
+		git add VERSION && git commit -m "Bump version to $$new_version"; \
+	else \
+		echo "❌ Error: VERSION file contains invalid format: $$current_version"; \
+		echo "   Expected format: x.y.z (e.g., 1.2.3)"; \
+		exit 1; \
+	fi
 
 # Run commands inside a container (if enabled) TODO: Determine how, when and why to use
 .container:
