@@ -66,7 +66,7 @@ We have a [chat](https://gitter.im/zunit-zsh/zunit). Jump in there and lurk, tal
 
 ## Submitting a pull request
 
-- Most pull requests should target the `next` branch, so they can be included in the next release.
+- Most pull requests should target the `develop` branch, so they can be included in the next release.
 - Urgent bug fixes may be targeted to the `master` branch, and a new patch release will be created immediately after
   they are merged. If in doubt, ask.
 - Non-trivial changes are often best discussed in an issue first, to prevent you from doing unnecessary work.

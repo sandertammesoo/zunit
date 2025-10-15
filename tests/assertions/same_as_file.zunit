@@ -1,0 +1,26 @@
+#!/usr/bin/env zunit
+
+@test 'Test _zunit_assert_same_as_file files success' {
+  run assert 'in.zunit' same_as_file 'in.zunit'
+  assert $state equals 0
+  assert $output is_empty
+}
+
+@test 'Test _zunit_assert_same_as_file directory success' {
+  run assert './' same_as_file './'
+  assert $state equals 0
+  assert $output is_empty
+}
+}
+
+@test 'Test _zunit_assert_same_as_file file failure' {
+  run assert 'in.zunit' same_as_file 'is_dir.zunit'
+  assert $state equals 1
+  assert $output same_as "'in.zunit' and 'is_dir.zunit' differ"
+}
+
+@test 'Test _zunit_assert_same_as_file directory failure' {
+  run assert './' same_as_file './..'
+  assert $state equals 1
+  assert $output same_as "'./' and './..' differ"
+}
