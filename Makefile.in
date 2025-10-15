@@ -65,33 +65,304 @@ define isede
 endef
 
 # Define main build targets (these are not actual files)
-.PHONY: all build clean install itests tests uninstall
+.PHONY: all build clean install itests tests uninstall release publish deploy check-version full-release setup-gpg cleanup-release
 
 # Default target: Run 'build' when 'make' is executed
 all: build
 
-# Release process TODO: Determine how, when and why to use
-release:
-	git checkout develop
-	git checkout -B release/${VERSION}
-	${MAKE} build test
-	git add ${VERSION_FILE}
-	git commit -S -m "Update for ${VERSION}"
+######################################################################
+# RELEASE WORKFLOW
+# 
+# 1. (Optional) Run: make setup-gpg    # Configure GPG for signing
+# 2. Update VERSION file with desired version number  
+# 3. Run: make check-version           # Check status (GPG, git auth, etc.)
+# 4. Run: make full-release            # Complete workflow
+#    OR run individual steps:
+#    - make release                    # Build and commit executable  
+#    - make publish                    # Create and push git tag
+#    - make deploy                     # Create release archives
+#
+# If release fails: make cleanup-release  # Clean up and retry
+# Note: GPG signing is optional - releases work without it
+######################################################################
+
+# Prepare a release: build, test, and commit the built executable
+release: build test
+	@echo "Preparing release ${VERSION}..."
+	@if [ -z "${VERSION}" ] || [ "${VERSION}" = "develop" ]; then \
+		echo "Error: VERSION must be set to a valid version number"; \
+		echo "Current VERSION: ${VERSION}"; \
+		echo "Please update the VERSION file first"; \
+		exit 1; \
+	fi
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Error: Working directory is not clean. Please commit or stash changes first."; \
+		git status --short; \
+		exit 1; \
+	fi
+	@echo "Building and testing version ${VERSION}..."
+	@echo "Adding built executable to git..."
 	git add ${EXEC}
-	git commit -S -m "Build release ${VERSION}"
+	git commit -S -m "Build release ${VERSION}" || echo "No changes to commit"
+	@echo "Release ${VERSION} prepared successfully"
+	@echo "Next steps:"
+	@echo "  make publish  # Create and push git tag"
+	@echo "  make deploy   # Create release archives"
 
-# Publish the release branch TODO: Determine how, when and why to use
+# Create and push a git tag for the release
 publish:
-	git push origin release/${VERSION}
+	@echo "Publishing release ${VERSION}..."
+	@if [ -z "${VERSION}" ] || [ "${VERSION}" = "develop" ]; then \
+		echo "Error: VERSION must be set to a valid version number"; \
+		exit 1; \
+	fi
+	@if git tag -l | grep -q "^v${VERSION}$$"; then \
+		echo "Error: Tag v${VERSION} already exists"; \
+		echo "To remove it and retry: git tag -d v${VERSION}"; \
+		exit 1; \
+	fi
+	@echo "Checking git authentication..."
+	@if git remote get-url origin | grep -q "^https://"; then \
+		echo "⚠️  Using HTTPS remote. Authentication options:"; \
+		echo ""; \
+		echo "For HTTPS remotes:"; \
+		echo "  1. Create a Personal Access Token at: https://github.com/settings/tokens"; \
+		echo "  2. Use token as password when prompted"; \
+		echo "  3. Or configure credential helper: git config --global credential.helper store"; \
+		echo ""; \
+		echo "For SSH remotes (recommended):"; \
+		echo "  1. Switch to SSH: git remote set-url origin git@github.com:sandertammesoo/zunit.git"; \
+		echo "  2. Set up SSH key: https://docs.github.com/en/authentication/connecting-to-github-with-ssh"; \
+		echo ""; \
+	fi
+	@echo "Creating git tag v${VERSION}..."
+	@if command -v gpg >/dev/null 2>&1 && gpg --list-secret-keys >/dev/null 2>&1 && [ -n "$$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null)" ]; then \
+		echo "✅ GPG configured, creating signed tag..."; \
+		git tag -s "v${VERSION}" -m "Release ${VERSION}"; \
+	else \
+		echo "⚠️  GPG not configured, creating unsigned tag..."; \
+		echo "   (To enable signed tags, configure GPG as shown in 'make setup-gpg')"; \
+		git tag -a "v${VERSION}" -m "Release ${VERSION}"; \
+	fi
+	@echo "Pushing tag to origin..."
+	@if ! git push origin "v${VERSION}" 2>/dev/null; then \
+		echo ""; \
+		echo "❌ Failed to push tag. This is likely an authentication issue:"; \
+		echo ""; \
+		echo "For HTTPS remotes:"; \
+		echo "  1. Create a Personal Access Token at: https://github.com/settings/tokens"; \
+		echo "  2. Use token as password when prompted"; \
+		echo "  3. Or configure credential helper: git config --global credential.helper store"; \
+		echo ""; \
+		echo "For SSH remotes (recommended):"; \
+		echo "  1. Switch to SSH: git remote set-url origin git@github.com:sandertammesoo/zunit.git"; \
+		echo "  2. Set up SSH key: https://docs.github.com/en/authentication/connecting-to-github-with-ssh"; \
+		echo ""; \
+		echo "To retry after fixing auth: make publish"; \
+		exit 1; \
+	fi
+	@echo "✅ Tag v${VERSION} published successfully"
+	@echo "Next step:"
+	@echo "  make deploy   # Create release archives"
 
-# Deploy the release (creates a signed tag and archive) TODO: Determine how, when and why to use
+# Create release archives and signatures
 deploy:
-	# git checkout develop
-	git tag -m "Build release ${VERSION}" -s "v${VERSION}"
-	git archive --output=${VERSION}.tar.gz --prefix=zunit-$$(echo ${VERSION}|sed s/v//)/ ${VERSION}
-	zcat ${VERSION}.tar.gz | gpg --armor --detach-sign >${VERSION}.tar.gz.sign
-	zcat ${VERSION}.tar.gz | gpg --verify ${VERSION}.tar.gz.sign -
-	# git push upstream ${VERSION}
+	@echo "Creating deployment artifacts for ${VERSION}..."
+	@if [ -z "${VERSION}" ] || [ "${VERSION}" = "develop" ]; then \
+		echo "Error: VERSION must be set to a valid version number"; \
+		exit 1; \
+	fi
+	@if ! git tag -l | grep -q "^v${VERSION}$$"; then \
+		echo "Error: Tag v${VERSION} does not exist. Run 'make publish' first."; \
+		exit 1; \
+	fi
+	@echo "Creating archive from tag v${VERSION}..."
+	git archive --format=tar.gz --output="zunit-${VERSION}.tar.gz" --prefix="zunit-${VERSION}/" "v${VERSION}"
+	@echo "Checking GPG configuration..."
+	@if command -v gpg >/dev/null 2>&1; then \
+		if gpg --list-secret-keys >/dev/null 2>&1 && [ -n "$$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null)" ]; then \
+			echo "✅ GPG is configured, creating signature..."; \
+			gpg --armor --detach-sign "zunit-${VERSION}.tar.gz" && \
+			echo "✅ Signature created: zunit-${VERSION}.tar.gz.asc" && \
+			echo "Verifying signature..." && \
+			gpg --verify "zunit-${VERSION}.tar.gz.asc" "zunit-${VERSION}.tar.gz" && \
+			echo "✅ Signature verified successfully"; \
+		else \
+			echo "⚠️  GPG is installed but not configured with a secret key"; \
+			echo "   To set up GPG signing:"; \
+			echo "   1. Generate a key: gpg --full-generate-key"; \
+			echo "   2. List keys: gpg --list-secret-keys --keyid-format LONG"; \
+			echo "   3. Configure git: git config user.signingkey <KEY_ID>"; \
+			echo "   Skipping signature creation for now..."; \
+		fi; \
+	else \
+		echo "⚠️  GPG not found. To enable signing:"; \
+		echo "   macOS: brew install gnupg"; \
+		echo "   Ubuntu/Debian: sudo apt install gnupg"; \
+		echo "   Then configure with: gpg --full-generate-key"; \
+		echo "   Skipping signature creation for now..."; \
+	fi
+	@echo ""
+	@echo "Deployment artifacts created:"
+	@echo "  📦 zunit-${VERSION}.tar.gz"
+	@if [ -f "zunit-${VERSION}.tar.gz.asc" ]; then \
+		echo "  🔐 zunit-${VERSION}.tar.gz.asc"; \
+	else \
+		echo "  ⚠️  No signature file (GPG not configured)"; \
+	fi
+	@echo ""
+	@echo "Upload these files to GitHub releases or your distribution method"
+
+# Check version and git status before release
+check-version:
+	@echo "Current version: ${VERSION}"
+	@echo "Git branch: $$(git branch --show-current)"
+	@echo "Git status:"
+	@git status --short
+	@echo ""
+	@if [ -z "${VERSION}" ] || [ "${VERSION}" = "develop" ]; then \
+		echo "⚠️  VERSION is not set to a release version"; \
+		echo "   Update the VERSION file with the desired version number"; \
+	else \
+		echo "✅ VERSION is set to: ${VERSION}"; \
+	fi
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "⚠️  Working directory has uncommitted changes"; \
+	else \
+		echo "✅ Working directory is clean"; \
+	fi
+	@if git tag -l | grep -q "^v${VERSION}$$"; then \
+		echo "⚠️  Tag v${VERSION} already exists"; \
+	else \
+		echo "✅ Tag v${VERSION} is available"; \
+	fi
+	@echo ""
+	@echo "GPG Status:"
+	@if command -v gpg >/dev/null 2>&1; then \
+		if gpg --list-secret-keys >/dev/null 2>&1 && [ -n "$$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null)" ]; then \
+			echo "✅ GPG is installed and configured"; \
+			echo "   📝 Signed tags and release signatures will be created"; \
+		else \
+			echo "⚠️  GPG is installed but not configured"; \
+			echo "   📝 Unsigned tags will be created, no signatures"; \
+		fi; \
+	else \
+		echo "⚠️  GPG not installed"; \
+		echo "   📝 Unsigned tags will be created, no signatures"; \
+	fi
+	@echo ""
+	@echo "Git Authentication:"
+	@if git remote get-url origin | grep -q "^https://"; then \
+		echo "⚠️  Using HTTPS remote - authentication setup needed"; \
+		echo "   🔗 Remote: $$(git remote get-url origin)"; \
+		echo ""; \
+		echo "For HTTPS remotes:"; \
+		echo "  1. Create a Personal Access Token at: https://github.com/settings/tokens"; \
+		echo "  2. Use token as password when prompted"; \
+		echo "  3. Or configure credential helper: git config --global credential.helper store"; \
+		echo ""; \
+		echo "For SSH remotes (recommended):"; \
+		echo "  1. Switch to SSH: git remote set-url origin git@github.com:sandertammesoo/zunit.git"; \
+		echo "  2. Set up SSH key: https://docs.github.com/en/authentication/connecting-to-github-with-ssh"; \
+		echo ""; \
+	elif git remote get-url origin | grep -q "^git@"; then \
+		echo "✅ Using SSH remote"; \
+		echo "   🔗 Remote: $$(git remote get-url origin)"; \
+	else \
+		echo "❓ Unknown remote type: $$(git remote get-url origin)"; \
+		echo ""; \
+		echo "For HTTPS remotes:"; \
+		echo "  1. Create a Personal Access Token at: https://github.com/settings/tokens"; \
+		echo "  2. Use token as password when prompted"; \
+		echo "  3. Or configure credential helper: git config --global credential.helper store"; \
+		echo ""; \
+		echo "For SSH remotes (recommended):"; \
+		echo "  1. Switch to SSH: git remote set-url origin git@github.com:sandertammesoo/zunit.git"; \
+		echo "  2. Set up SSH key: https://docs.github.com/en/authentication/connecting-to-github-with-ssh"; \
+		echo ""; \
+	fi
+
+# Complete release workflow: release -> publish -> deploy
+full-release: check-version release publish deploy
+	@echo ""
+	@echo "🎉 Release ${VERSION} completed successfully!"
+	@echo ""
+	@echo "Release artifacts created:"
+	@echo "  📦 zunit-${VERSION}.tar.gz"
+	@echo "  🔐 zunit-${VERSION}.tar.gz.asc"
+	@echo "  🏷️  Git tag: v${VERSION}"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Create a GitHub release at: https://github.com/sandertammesoo/zunit/releases/new"
+	@echo "  2. Upload the tar.gz and .asc files"
+	@echo "  3. Update package managers (Homebrew, etc.)"
+
+# Setup GPG for signing releases (guidance only)
+setup-gpg:
+	@echo "🔐 GPG Setup Guide for Release Signing"
+	@echo "======================================"
+	@echo ""
+	@if command -v gpg >/dev/null 2>&1; then \
+		echo "✅ GPG is already installed"; \
+	else \
+		echo "📦 Install GPG first:"; \
+		echo "   macOS:         brew install gnupg"; \
+		echo "   Ubuntu/Debian: sudo apt install gnupg"; \
+		echo "   CentOS/RHEL:   sudo yum install gnupg2"; \
+		echo ""; \
+	fi
+	@if gpg --list-secret-keys >/dev/null 2>&1 && [ -n "$$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null)" ]; then \
+		echo "✅ GPG key already exists"; \
+		echo ""; \
+		echo "Current keys:"; \
+		gpg --list-secret-keys --keyid-format LONG | grep -E "(sec|uid)"; \
+	else \
+		echo "🔑 Generate a GPG key:"; \
+		echo "   gpg --full-generate-key"; \
+		echo "   (Choose RSA, 4096 bits, no expiration)"; \
+		echo ""; \
+		echo "🔧 Configure Git to use your key:"; \
+		echo "   gpg --list-secret-keys --keyid-format LONG"; \
+		echo "   git config --global user.signingkey <KEY_ID>"; \
+		echo "   git config --global commit.gpgsign true"; \
+		echo "   git config --global tag.gpgsign true"; \
+	fi
+	@echo ""
+	@echo "🧪 Test your setup:"
+	@echo "   gpg --armor --detach-sign Makefile"
+	@echo "   gpg --verify Makefile.asc Makefile"
+	@echo "   rm Makefile.asc"
+	@echo ""
+	@echo "📚 More info: https://docs.github.com/en/authentication/managing-commit-signature-verification"
+
+# Clean up failed release attempts
+cleanup-release:
+	@echo "🧹 Cleaning up failed release for ${VERSION}..."
+	@if [ -z "${VERSION}" ] || [ "${VERSION}" = "develop" ]; then \
+		echo "Error: VERSION must be set"; \
+		exit 1; \
+	fi
+	@if git tag -l | grep -q "^v${VERSION}$$"; then \
+		echo "Removing local tag v${VERSION}..."; \
+		git tag -d "v${VERSION}"; \
+	else \
+		echo "No local tag v${VERSION} found"; \
+	fi
+	@if git ls-remote --tags origin | grep -q "refs/tags/v${VERSION}$$"; then \
+		echo "⚠️  Remote tag v${VERSION} exists on origin"; \
+		echo "To remove it: git push origin --delete v${VERSION}"; \
+	else \
+		echo "✅ No remote tag v${VERSION} found"; \
+	fi
+	@if [ -f "zunit-${VERSION}.tar.gz" ]; then \
+		echo "Removing zunit-${VERSION}.tar.gz..."; \
+		rm -f "zunit-${VERSION}.tar.gz"; \
+	fi
+	@if [ -f "zunit-${VERSION}.tar.gz.asc" ]; then \
+		echo "Removing zunit-${VERSION}.tar.gz.asc..."; \
+		rm -f "zunit-${VERSION}.tar.gz.asc"; \
+	fi
+	@echo "✅ Cleanup completed. You can now retry the release."
 
 # Run commands inside a container (if enabled) TODO: Determine how, when and why to use
 .container:
@@ -116,7 +387,7 @@ tests:
 	@${make} .container command="sh -c 'zdotdir=${tests} zunit=${project} cram ${cram_opts} --shell=zsh ${test}'"
 
 # Run the main Zunit program
-test:
+test: build
 	${EXEC} run
 
 # Install Zunit locally
