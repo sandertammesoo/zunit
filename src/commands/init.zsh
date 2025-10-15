@@ -13,6 +13,7 @@ function _zunit_init_usage() {
     echo "$(color yellow 'Options:')"
     echo "  -h, --help         Output help text and exit"
     echo "  -v, --version      Output version information and exit"
+    echo "      --build-info   Output detailed build information and exit"
     echo "  -t, --travis       Generate .travis.yml in project"
 } # ]]]
 # FUNCTION: _zunit_parse_yaml [[[

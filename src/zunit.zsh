@@ -22,6 +22,7 @@ function _zunit_usage() {
     echo "  -r, --revolver     Run tests with revolver spinner"
     echo "  -t, --tap          Output results in a TAP compatible format"
     echo "  -v, --version      Output version information and exit"
+    echo "      --build-info   Output detailed build information and exit"
     echo "      --allow-risky  Supress warnings generated for risky tests"
     echo "      --output-html  Print results to a HTML page"
     echo "      --output-text  Print results to a text log, in TAP compatible format"
@@ -31,12 +32,27 @@ function _zunit_usage() {
 # FUNCTION: _zunit_version [[[
 # Output the version number
 function _zunit_version() {
-    echo '0.10.0'
+    echo '{{ZUNIT_VERSION}}'
+} # ]]]
+# FUNCTION: _zunit_build_info [[[
+# Output detailed build information
+function _zunit_build_info() {
+    echo "ZUnit Build Information"
+    echo "======================"
+    echo "Version:       {{ZUNIT_VERSION}}"
+    echo "Git Revision:  {{ZUNIT_REVISION}}"
+    echo "Build Date:    {{ZUNIT_REVISION_DATE}}"
+    echo ""
+    echo "Runtime Information"
+    echo "==================="
+    echo "Zsh Version:   $ZSH_VERSION"
+    echo "Platform:      $(uname -s) $(uname -m)"
+    echo "Build Path:    $0"
 } # ]]]
 # FUNCTION: _zunit [[[
 # The main zunit process
 function _zunit() {
-    local help version ctx="$1" missing_dependencies=0 missing_config=1
+    local help version build_info ctx="$1" missing_dependencies=0 missing_config=1
     if [[ -f .zunit.yml ]]; then
         # Try and parse the config file within a subprocess,
         # to avoid killing the main thread
@@ -56,12 +72,19 @@ function _zunit() {
 
     zparseopts -D -E \
         h=help -help=help \
-        v=version -version=version
+        v=version -version=version \
+        -build-info=build_info
 
     # If the version option is passed,
     # output version information and exit
     if [[ -n $version ]]; then
         _zunit_version && exit 0
+    fi
+
+    # If the build-info option is passed,
+    # output detailed build information and exit
+    if [[ -n $build_info ]]; then
+        _zunit_build_info && exit 0
     fi
 
     # Check which command has been passed, and run it. If the command
