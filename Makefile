@@ -110,9 +110,11 @@ release: build test
 		echo "Please update the VERSION file first"; \
 		exit 1; \
 	fi
-	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "Error: Working directory is not clean. Please commit or stash changes first."; \
-		git status --short; \
+	@# Check for uncommitted changes, but allow rebuilt executable
+	@if git status --porcelain | grep -v " M bin/zunit$$" | grep -q .; then \
+		echo "Error: Working directory has uncommitted changes other than the built executable."; \
+		echo "Please commit or stash these changes first:"; \
+		git status --porcelain | grep -v " M bin/zunit$$"; \
 		exit 1; \
 	fi
 	@echo "Building and testing version ${VERSION}..."
