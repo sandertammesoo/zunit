@@ -110,9 +110,11 @@ release: build test
 		echo "Please update the VERSION file first"; \
 		exit 1; \
 	fi
-	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "Error: Working directory is not clean. Please commit or stash changes first."; \
-		git status --short; \
+	@# Check for uncommitted changes, but allow rebuilt executable
+	@if git status --porcelain | grep -v " M bin/zunit$$" | grep -q .; then \
+		echo "Error: Working directory has uncommitted changes other than the built executable."; \
+		echo "Please commit or stash these changes first:"; \
+		git status --porcelain | grep -v " M bin/zunit$$"; \
 		exit 1; \
 	fi
 	@echo "Building and testing version ${VERSION}..."
@@ -436,27 +438,26 @@ setup-gpg:
 	@echo ""
 	@echo "📚 More info: https://docs.github.com/en/authentication/managing-commit-signature-verification"
 
-# Clean up failed release attempts
+# Clean up failed release attempts (smart cleanup - preserves successful releases)
 cleanup-release:
 	@echo "🧹 Cleaning up failed release for ${VERSION}..."
 	@if [ -z "${VERSION}" ] || [ "${VERSION}" = "develop" ]; then \
 		echo "Error: VERSION must be set"; \
 		exit 1; \
 	fi
-	@if git tag -l | grep -q "^v${VERSION}$$"; then \
-		echo "Removing local tag v${VERSION}..."; \
+	@local_tag_exists=$$(git tag -l | grep -q "^v${VERSION}$$" && echo "true" || echo "false"); \
+	remote_tag_exists=$$(git ls-remote --tags origin 2>/dev/null | grep -q "refs/tags/v${VERSION}$$" && echo "true" || echo "false"); \
+	if [ "$$local_tag_exists" = "true" ] && [ "$$remote_tag_exists" = "true" ]; then \
+		echo "✅ Tag v${VERSION} exists locally and remotely - this appears to be a successful release"; \
+		echo "   📝 Local tag will NOT be removed (use cleanup-release-force if really needed)"; \
+		echo "   🧹 Only cleaning up local artifacts..."; \
+	elif [ "$$local_tag_exists" = "true" ] && [ "$$remote_tag_exists" = "false" ]; then \
+		echo "🗑️  Local tag v${VERSION} exists but not on remote - removing failed release tag"; \
 		git tag -d "v${VERSION}"; \
+	elif [ "$$local_tag_exists" = "false" ] && [ "$$remote_tag_exists" = "true" ]; then \
+		echo "✅ Remote tag v${VERSION} exists, no local tag to clean up"; \
 	else \
-		echo "No local tag v${VERSION} found"; \
-	fi
-	@if git ls-remote --tags origin | grep -q "refs/tags/v${VERSION}$$"; then \
-		echo "⚠️  Remote tag v${VERSION} exists on origin"; \
-		echo "   📝 Options:"; \
-		echo "      Remove remote tag: git push origin --delete v${VERSION}"; \
-		echo "      Or create new version: make bump-patch"; \
-		echo "   ⚠️  Warning: Removing remote tags can affect other users!"; \
-	else \
-		echo "✅ No remote tag v${VERSION} found"; \
+		echo "✅ No tags found for v${VERSION}"; \
 	fi
 	@if [ -f "zunit-${VERSION}.tar.gz" ]; then \
 		echo "Removing zunit-${VERSION}.tar.gz..."; \
