@@ -1,0 +1,34 @@
+#!/usr/bin/env zsh
+#MISE description="Formula update: point the Homebrew formula at the new release archive and push the tap"
+
+source "${0:A:h}/../../lib/release.zsh"
+need brew curl git shasum
+
+local version=$(release_version)
+local name=zunit-$version.tar.gz
+local url=https://github.com/$REPO/releases/download/v$version/$name
+
+# Users get the file from GitHub, so the sha256 comes from GitHub. It must match the local file.
+say "download $url"
+local sha=$(curl -fsSL $url | shasum -a 256 | cut -d' ' -f1)
+if [[ -f $DIST/$name ]]; then
+	[[ $sha == $(shasum -a 256 $DIST/$name | cut -d' ' -f1) ]] || die "the archive on GitHub differs from $DIST/$name"
+fi
+
+local tap=$(brew --repository $TAP)
+local -a found=($tap/zunit.rb(N) $tap/Formula/zunit.rb(N))
+(( $#found )) || die "zunit.rb not found in $tap"
+local formula=$found[1]
+git -C $tap pull -q --ff-only
+
+# The 'tag:' line goes away because the formula used a git tag before the archive URL.
+sed -E -i '' \
+	-e "s|^(  url ).*|\1\"$url\"|" \
+	-e '/^ +tag: /d' \
+	-e "s|^(  sha256 ).*|\1\"$sha\"|" \
+	$formula
+
+git -C $tap diff --stat
+git -C $tap commit -q -m "zunit $version" -- ${formula#$tap/}
+git -C $tap push -q
+say "formula points at $version"

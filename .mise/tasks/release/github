@@ -1,0 +1,12 @@
+#!/usr/bin/env zsh
+#MISE description="Make the GitHub Release and upload the release archive"
+
+source "${0:A:h}/../../lib/release.zsh"
+need gh
+
+local version=$(release_version)
+local tag=v$version
+local archive=$DIST/zunit-$version.tar.gz
+[[ -f $archive && -f $archive.asc ]] || die "the release archive for $version is missing. Run: mise run release:package"
+
+gh release create $tag $archive $archive.asc --repo $REPO --verify-tag --title $tag --generate-notes

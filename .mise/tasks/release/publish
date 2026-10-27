@@ -1,0 +1,16 @@
+#!/usr/bin/env zsh
+#MISE description="Publish: push develop, master and the tag to GitHub"
+#MISE raw=true
+
+source "${0:A:h}/../../lib/release.zsh"
+need git
+
+local version=$(release_version)
+local tag=v$version
+local_tag_exists $tag || die "tag $tag does not exist. Run: mise run release:tag"
+git merge-base --is-ancestor $tag master || die "master does not contain $tag. Run: mise run release:tag"
+[[ -f $DIST/zunit-$version.tar.gz.asc ]] || die "the release archive for $version is missing. Run: mise run release:package"
+
+confirm "Push develop, master and $tag to origin? Other people can see them after this step."
+git push --atomic origin develop master $tag
+say "pushed develop, master and $tag"

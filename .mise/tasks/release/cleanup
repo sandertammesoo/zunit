@@ -1,0 +1,49 @@
+#!/usr/bin/env zsh
+#MISE description="Undo a Release that stopped: the local tag, the local merge, the version bump and dist/"
+#MISE raw=true
+#USAGE flag "--remote" help="Also delete the tag and the GitHub Release on GitHub. Asks you to type yes."
+
+source "${0:A:h}/../../lib/release.zsh"
+need git
+
+on_branch develop
+clean_tree
+
+local version=$(release_version)
+local tag=v$version
+
+if remote_tag_exists $tag; then
+	if [[ ${usage_remote:-false} == true ]]; then
+		need gh
+		confirm "Delete $tag and its GitHub Release on GitHub? People who fetched $tag keep it."
+		gh release delete $tag --repo $REPO --yes 2>/dev/null || say "no GitHub Release for $tag"
+		git push -q origin --delete $tag
+		say "deleted $tag on origin. master and develop on origin do not change."
+	else
+		die "$tag is on origin, so this Release was published. Run with --remote to delete it there too."
+	fi
+fi
+
+if local_tag_exists $tag; then
+	git tag -d $tag
+fi
+
+# master and develop go back to origin only if this Release made the only commits that origin does not have.
+git fetch -q origin master develop
+if [[ $(git rev-parse master) != $(git rev-parse origin/master) ]]; then
+	if [[ $(git log -1 --format=%s master) == "Release $version" && $(git rev-parse master^1) == $(git rev-parse origin/master) ]]; then
+		git branch -f master origin/master
+		say "master reset to origin/master"
+	else
+		say "master has other commits that are not on origin. master does not change."
+	fi
+fi
+
+if [[ $(git log -1 --format=%s) == "Bump version to $version" ]] \
+	&& ! git merge-base --is-ancestor HEAD origin/develop; then
+	git reset -q --keep HEAD~1
+	say "removed the commit 'Bump version to $version'. VERSION is now $(release_version)"
+fi
+
+rm -f $DIST/zunit-$version.tar.gz $DIST/zunit-$version.tar.gz.asc
+say "cleanup of $version done"

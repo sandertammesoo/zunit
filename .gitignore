@@ -4,3 +4,8 @@
 
 # Ignore the compiled program
 /zunit
+
+# Ignore the generated Makefile, the built program and the release archives
+/Makefile
+/bin/zunit
+/dist

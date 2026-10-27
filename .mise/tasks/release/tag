@@ -1,0 +1,21 @@
+#!/usr/bin/env zsh
+#MISE description="Make the signed tag and merge develop into master, on this machine only"
+#MISE raw=true
+
+source "${0:A:h}/../../lib/release.zsh"
+need git gpg
+
+on_branch develop
+clean_tree
+
+local version=$(release_version)
+local tag=v$version
+local_tag_exists $tag && die "tag $tag exists locally. Run: mise run release:cleanup"
+
+say "tag $tag"
+git tag -s $tag -m "Release $version"
+
+say "merge develop into master"
+git switch -q master
+git merge -q --no-ff develop -m "Release $version" || { git merge --abort; git switch -q develop; die "the merge into master failed" }
+git switch -q develop

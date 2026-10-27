@@ -1,0 +1,26 @@
+#!/usr/bin/env zsh
+#MISE description="Raise the version in VERSION and commit it on develop"
+#USAGE arg "<level>" help="The part of the version to raise" {
+#USAGE   choices "patch" "minor" "major"
+#USAGE }
+
+source "${0:A:h}/../../lib/release.zsh"
+need git
+
+on_branch develop
+clean_tree
+
+local old=$(release_version)
+local -a part=(${(s:.:)old})
+case ${usage_level:-$1} in
+	(patch) (( part[3]++ )) ;;
+	(minor) (( part[2]++ )); part[3]=0 ;;
+	(major) (( part[1]++ )); part[2]=0; part[3]=0 ;;
+	(*) die "level must be patch, minor or major" ;;
+esac
+local new=${(j:.:)part}
+
+print -r -- $new > VERSION
+git add VERSION
+git commit -q -m "Bump version to $new"
+say "version $old → $new"
