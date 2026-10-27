@@ -25,7 +25,8 @@ if remote_tag_exists $tag; then
 fi
 
 if ! remote_tag_exists $tag && local_tag_exists $tag; then
-	git tag -d $tag
+	git tag -d $tag >/dev/null
+	say "deleted the local tag $tag"
 fi
 
 # master goes back to origin/master only if each commit that origin does not have is a release merge.
