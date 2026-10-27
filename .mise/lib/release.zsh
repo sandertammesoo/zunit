@@ -44,6 +44,13 @@ clean_tree() {
 $(git status --short)"
 }
 
+# A Release that stopped leaves its merge on master. A new Release must not start on top of it.
+master_in_sync() {
+	git fetch -q origin master
+	[[ $(git rev-parse master) == $(git rev-parse origin/master) ]] \
+		|| die "master has commits that are not on origin/master. Run: mise run release:cleanup"
+}
+
 local_tag_exists() {
 	git rev-parse -q --verify "refs/tags/$1" >/dev/null
 }

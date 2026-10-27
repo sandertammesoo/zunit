@@ -6,6 +6,7 @@ need git make
 
 on_branch develop
 clean_tree
+master_in_sync
 
 local version=$(release_version)
 local_tag_exists v$version && die "tag v$version exists locally. Run: mise run release:bump <level>, or mise run release:cleanup"

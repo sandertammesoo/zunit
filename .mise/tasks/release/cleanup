@@ -20,23 +20,30 @@ if remote_tag_exists $tag; then
 		git push -q origin --delete $tag
 		say "deleted $tag on origin. master and develop on origin do not change."
 	else
-		die "$tag is on origin, so this Release was published. Run with --remote to delete it there too."
+		say "$tag is on origin, so $tag stays. To delete it there too, run with --remote."
 	fi
 fi
 
-if local_tag_exists $tag; then
+if ! remote_tag_exists $tag && local_tag_exists $tag; then
 	git tag -d $tag
 fi
 
-# master and develop go back to origin only if this Release made the only commits that origin does not have.
+# master goes back to origin/master only if each commit that origin does not have is a release merge.
+# There can be more than one, if a Release started again before a cleanup.
 git fetch -q origin master develop
-if [[ $(git rev-parse master) != $(git rev-parse origin/master) ]]; then
-	if [[ $(git log -1 --format=%s master) == "Release $version" && $(git rev-parse master^1) == $(git rev-parse origin/master) ]]; then
-		git branch -f master origin/master
-		say "master reset to origin/master"
-	else
-		say "master has other commits that are not on origin. master does not change."
-	fi
+local tip=$(git rev-parse master)
+while [[ $tip != $(git rev-parse origin/master) ]] \
+	&& [[ $(git log -1 --format=%s $tip) == "Release "<->.<->.<-> ]] \
+	&& git rev-parse -q --verify "$tip^2" >/dev/null; do
+	tip=$(git rev-parse "$tip^1")
+done
+if [[ $(git rev-parse master) == $(git rev-parse origin/master) ]]; then
+	:
+elif [[ $tip == $(git rev-parse origin/master) ]]; then
+	git branch -f master origin/master
+	say "master reset to origin/master"
+else
+	say "master has commits that are not release merges and not on origin. master does not change."
 fi
 
 if [[ $(git log -1 --format=%s) == "Bump version to $version" ]] \

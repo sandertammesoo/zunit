@@ -9,6 +9,7 @@ need git
 
 on_branch develop
 clean_tree
+master_in_sync
 
 local old=$(release_version)
 local -a part=(${(s:.:)old})
