@@ -1,0 +1,57 @@
+#!/usr/bin/env zsh
+#MISE description="Undo a Release that stopped: the local tag, the local merge, the version bump and dist/"
+#MISE raw=true
+#USAGE flag "--remote" help="Also delete the tag and the GitHub Release on GitHub. Asks you to type yes."
+
+source "${0:A:h}/../../lib/release.zsh"
+need git
+
+on_branch develop
+clean_tree
+
+local version=$(release_version)
+local tag=v$version
+
+if remote_tag_exists $tag; then
+	if [[ ${usage_remote:-false} == true ]]; then
+		need gh
+		confirm "Delete $tag and its GitHub Release on GitHub? People who fetched $tag keep it."
+		gh release delete $tag --repo $REPO --yes 2>/dev/null || say "no GitHub Release for $tag"
+		git push -q origin --delete $tag
+		say "deleted $tag on origin. master and develop on origin do not change."
+	else
+		say "$tag is on origin, so $tag stays. To delete it there too, run with --remote."
+	fi
+fi
+
+if ! remote_tag_exists $tag && local_tag_exists $tag; then
+	git tag -d $tag >/dev/null
+	say "deleted the local tag $tag"
+fi
+
+# master goes back to origin/master only if each commit that origin does not have is a release merge.
+# There can be more than one, if a Release started again before a cleanup.
+git fetch -q origin master develop
+local tip=$(git rev-parse master)
+while [[ $tip != $(git rev-parse origin/master) ]] \
+	&& [[ $(git log -1 --format=%s $tip) == "Release "<->.<->.<-> ]] \
+	&& git rev-parse -q --verify "$tip^2" >/dev/null; do
+	tip=$(git rev-parse "$tip^1")
+done
+if [[ $(git rev-parse master) == $(git rev-parse origin/master) ]]; then
+	:
+elif [[ $tip == $(git rev-parse origin/master) ]]; then
+	git branch -q -f master origin/master
+	say "master reset to origin/master"
+else
+	say "master has commits that are not release merges and not on origin. master does not change."
+fi
+
+if [[ $(git log -1 --format=%s) == "Bump version to $version" ]] \
+	&& ! git merge-base --is-ancestor HEAD origin/develop; then
+	git reset -q --keep HEAD~1
+	say "removed the commit 'Bump version to $version'. VERSION is now $(release_version)"
+fi
+
+rm -f $DIST/zunit-$version.tar.gz $DIST/zunit-$version.tar.gz.asc
+say "cleanup of $version done"

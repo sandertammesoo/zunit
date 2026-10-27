@@ -1,0 +1,24 @@
+#!/usr/bin/env zsh
+#MISE description="Make the signed tag and merge develop into master, on this machine only"
+#MISE raw=true
+
+source "${0:A:h}/../../lib/release.zsh"
+need git gpg
+
+on_branch develop
+clean_tree
+
+local version=$(release_version)
+local tag=v$version
+local_tag_exists $tag && die "tag $tag exists locally. Run: mise run release:cleanup"
+
+say "tag $tag"
+git tag -s $tag -m "Release $version"
+
+# The merge does not switch to master. A switch replaces the ignored Makefile and bin/zunit
+# with the copies that an older master tracks, and the switch back deletes them.
+say "merge develop into master"
+local tree
+tree=$(git merge-tree --write-tree master develop) || die "develop does not merge into master without conflicts"
+local merge=$(git commit-tree $tree -p master -p develop -m "Release $version")
+git update-ref -m "release: merge develop for $version" refs/heads/master $merge $(git rev-parse master)

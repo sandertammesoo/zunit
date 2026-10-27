@@ -1,0 +1,20 @@
+#!/usr/bin/env zsh
+#MISE description="Release: bump, check, tag, package, then (after you type yes) publish, GitHub Release and formula update"
+#MISE raw=true
+#USAGE arg "<level>" help="The part of the version to raise" {
+#USAGE   choices "patch" "minor" "major"
+#USAGE }
+
+source "${0:A:h}/../../lib/release.zsh"
+need mise
+
+# The steps before publish change only this machine. release:cleanup undoes them.
+local step
+for step in "bump ${usage_level:-$1}" check tag package publish github homebrew; do
+	print
+	say "release:$step"
+	mise run release:${=step}
+done
+
+print
+say "Release $(release_version) done: https://github.com/$REPO/releases/tag/v$(release_version)"

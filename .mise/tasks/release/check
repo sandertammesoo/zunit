@@ -1,0 +1,18 @@
+#!/usr/bin/env zsh
+#MISE description="Release check: build and test the version on develop"
+
+source "${0:A:h}/../../lib/release.zsh"
+need git make
+
+on_branch develop
+clean_tree
+master_in_sync
+
+local version=$(release_version)
+local_tag_exists v$version && die "tag v$version exists locally. Run: mise run release:bump <level>, or mise run release:cleanup"
+remote_tag_exists v$version && die "tag v$version exists on origin. Run: mise run release:bump <level>"
+
+ensure_makefile
+say "build and test $version"
+make build
+make test

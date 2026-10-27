@@ -379,7 +379,7 @@ All contributions are welcome and encouraged! Please read our [contribution guid
 - **ZSH 5.0+** - The shell ZUnit is built for
 - **Git** - Version control
 - **Make** - Build system
-- **GPG** (optional) - For signed releases
+- **GPG** and **[mise](https://mise.jdx.dev)** - Only for maintainers who make releases
 
 #### Initial Setup
 
@@ -403,10 +403,7 @@ make build
 # 6. Run the test suite to verify everything works
 make test
 
-# 7. Check development environment status
-make check-version
-
-# 8. (Optional) Install locally for testing
+# 7. (Optional) Install locally for testing
 make install
 ```
 
@@ -415,9 +412,6 @@ make install
 For contributing and releasing, you'll need proper Git authentication:
 
 ```zsh
-# Check current authentication status
-make check-version
-
 # Option A: SSH Authentication (Recommended)
 git remote set-url origin git@github.com:YOUR_USERNAME/zunit.git
 # Set up SSH key: https://docs.github.com/en/authentication/connecting-to-github-with-ssh
@@ -428,17 +422,27 @@ git remote set-url origin git@github.com:YOUR_USERNAME/zunit.git
 # 3. Configure credential helper: git config --global credential.helper store
 ```
 
-#### GPG Setup (Optional, for Signed Releases)
+#### Signing
+
+A release needs a GPG key, because the release tag and the release archive are signed.
 
 ```zsh
-# Get guidance on GPG configuration
-make setup-gpg
+# 1. Install GPG
+brew install gnupg
 
-# Follow the instructions to:
-# - Install GPG if needed
-# - Generate a GPG key
-# - Configure Git to use your key
+# 2. Make a key (RSA, 4096 bits)
+gpg --full-generate-key
+
+# 3. Tell git to use the key
+gpg --list-secret-keys --keyid-format LONG
+git config --global user.signingkey <KEY_ID>
+git config --global tag.gpgsign true
+
+# 4. Test the key
+echo test | gpg --clearsign | gpg --verify
 ```
+
+More information: https://docs.github.com/en/authentication/managing-commit-signature-verification
 
 ### Development Cycle
 
@@ -483,35 +487,6 @@ make test
 ./bin/zunit --help
 ./bin/zunit --version
 ```
-
-#### Version Management
-
-ZUnit includes automated version management tools:
-
-```zsh
-# Check current version and release status
-make check-version
-# Provides intelligent guidance based on:
-# - Current version number
-# - Local vs remote tag status  
-# - Git authentication setup
-# - GPG configuration
-
-# Automated version bumping
-make bump-patch   # Bug fixes: 1.2.3 → 1.2.4
-make bump-minor   # New features: 1.2.3 → 1.3.0  
-make bump-major   # Breaking changes: 1.2.3 → 2.0.0
-
-# Smart cleanup for development
-make cleanup-release        # Clean local tags/artifacts
-make cleanup-release-force  # Remove remote tags (dangerous!)
-```
-
-The `check-version` target now provides context-aware guidance:
-- **Local + Remote tags**: Suggests version bumping only
-- **Local-only tags**: Suggests cleanup or version bumping
-- **Remote-only tags**: Suggests version bumping only
-- **No existing tags**: Confirms version is available
 
 #### Code Style Guidelines
 
@@ -581,106 +556,24 @@ For ambitious tasks, open a draft PR early:
 
 ### Release Process (for Maintainers)
 
-#### Preparing a Release
+A release uses the mise tasks in `.mise/tasks/release`. You need mise, `gh`, and a GPG key (see [Signing](#signing)). The words for the steps are in [GLOSSARY.md](GLOSSARY.md).
 
 ```zsh
-# 1. Ensure you're on develop branch with latest changes
-git checkout develop
-git pull upstream develop
-
-# 2. Check release readiness (includes GPG and git authentication status)
-make check-version
-
-# 3. Set up authentication if needed (SSH recommended)
-# Follow the guidance from check-version output:
-git remote set-url origin git@github.com:sandertammesoo/zunit.git
-
-# 4. Update version number using automated bump targets
-make bump-patch   # Increment patch version (x.y.z → x.y.z+1)
-make bump-minor   # Increment minor version (x.y.z → x.y+1.0)  
-make bump-major   # Increment major version (x.y.z → x+1.0.0)
-# OR manually: echo "0.11.0" > VERSION
-
-# 5. Update changelog/release notes if applicable
-# Edit CHANGELOG.md or prepare GitHub release notes
-
-# 6. Final status check - now includes smart tag detection
-make check-version
+mise tasks ls                  # List the release tasks
+mise run release patch         # Or minor, or major: the whole release
+mise run release:cleanup       # Undo a release that stopped before publish
 ```
 
-#### Creating the Release
-
-```zsh
-# Option A: Complete automated release (recommended)
-make full-release
-
-# Option B: Step-by-step release
-make release   # Build, test, and commit executable
-make publish   # Create and push git tag (with auth guidance)
-make deploy    # Create release archives and signatures (GPG optional)
-
-# If any step fails, clean up and retry
-make cleanup-release
-```
-
-#### Post-Release Tasks
-
-```zsh
-# 1. Create GitHub Release
-# - Go to: https://github.com/sandertammesoo/zunit/releases/new
-# - Select the new tag (v0.11.0)
-# - Upload zunit-0.11.0.tar.gz and zunit-0.11.0.tar.gz.asc
-# - Write release notes
-
-# 2. Update package managers
-# - Update Homebrew formula
-# - Update any other distribution methods
-
-# 3. Announce the release
-# - Update documentation if needed
-# - Post on relevant forums/social media
-```
-
-#### Release Troubleshooting
-
-```zsh
-# Check release status - now includes smart local/remote tag detection
-make check-version
-# Provides context-aware guidance based on tag locations
-
-# Version management
-make bump-patch        # Create new patch version automatically
-make bump-minor        # Create new minor version automatically  
-make bump-major        # Create new major version automatically
-
-# Clean up release issues
-make cleanup-release        # Safe cleanup (local tags only)
-make cleanup-release-force  # Remove remote tags (USE WITH CAUTION!)
-
-# Authentication setup
-# The Makefile provides specific guidance for:
-# - HTTPS authentication (Personal Access Tokens)
-# - SSH key setup (recommended)
-# - Credential helper configuration
-
-# GPG setup for signed releases
-make setup-gpg
-
-# Switch to SSH for easier authentication (recommended)
-git remote set-url origin git@github.com:sandertammesoo/zunit.git
-
-# Development status
-git status              # View current changes
-git log --oneline -10   # See recent commits
-make clean             # Clean up build artifacts
-```
+`mise run release` does all local steps first: bump, check, tag, and package. Then it asks you to type `yes` before it pushes to GitHub. After the push, it makes the GitHub Release and updates the Homebrew formula. To test the tasks, type `no` at the prompt, then run `mise run release:cleanup`.
 
 ### Project Structure for Contributors
 
 ```
 zunit/
 ├── .zunit.yml              # ZUnit's own test configuration
-├── Makefile                # Build system (generated by configure)
+├── .mise/tasks/release/    # Release tasks (mise)
+├── GLOSSARY.md             # Words for the release steps
+├── Makefile                # Build system (generated by configure, not in git)
 ├── Makefile.in             # Build system template
 ├── configure               # Build configuration script
 ├── VERSION                 # Current version number
@@ -696,8 +589,8 @@ zunit/
 │       ├── tap.zsh       # TAP format output
 │       └── html.zsh      # HTML report generation
 ├── tests/                 # ZUnit's own test suite
-├── bin/                   # Built executable (generated)
-└── docs/                  # Documentation
+├── bin/                   # Built executable (generated, not in git)
+└── docs/adr/              # Architecture decision records
 ```
 
 ### Build Process Details
@@ -724,23 +617,7 @@ The build system combines multiple source files into a single executable:
    - `make install` - Install to configured prefix
    - `make clean` - Remove build artifacts
    
-   **Version Management:**
-   - `make bump-patch` - Increment patch version (x.y.z → x.y.z+1)
-   - `make bump-minor` - Increment minor version (x.y.z → x.y+1.0)
-   - `make bump-major` - Increment major version (x.y.z → x+1.0.0)
-   - `make bump-version` - Alias for bump-patch
-   
-   **Release Process:**
-   - `make check-version` - Smart release readiness check (tags, GPG, auth)
-   - `make full-release` - Complete automated release workflow
-   - `make release` - Build, test, commit, push to develop
-   - `make publish` - Create tag, merge to master, push both
-   - `make deploy` - Create release archives and GPG signatures
-   
-   **Cleanup & Setup:**
-   - `make cleanup-release` - Clean up local release artifacts
-   - `make cleanup-release-force` - Remove remote tags (dangerous!)
-   - `make setup-gpg` - GPG configuration guidance
+   The release tasks are not make targets. See [Release Process](#release-process-for-maintainers).
 
 ## License
 

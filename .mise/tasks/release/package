@@ -1,0 +1,29 @@
+#!/usr/bin/env zsh
+#MISE description="Package: make the signed release archive in dist/"
+#MISE raw=true
+
+source "${0:A:h}/../../lib/release.zsh"
+need git gpg make
+
+local version=$(release_version)
+local tag=v$version
+local archive=$DIST/zunit-$version.tar.gz
+local_tag_exists $tag || die "tag $tag does not exist. Run: mise run release:tag"
+[[ $(git rev-parse HEAD) == $(git rev-parse "$tag^{commit}") ]] || die "HEAD is not at $tag. Run: git switch develop"
+[[ -n $(gpg --list-secret-keys 2>/dev/null) ]] || die "gpg has no secret key, and the release archive must be signed. See 'Signing' in README.md"
+
+say "build bin/zunit at $tag"
+ensure_makefile
+make build
+
+# The last --prefix applies to the tracked files. Each --add-file uses the --prefix before it.
+say "make $archive"
+mkdir -p $DIST
+git archive --format=tar.gz --output=$archive \
+	--prefix=zunit-$version/bin/ --add-file=bin/zunit \
+	--prefix=zunit-$version/ $tag
+
+say "sign $archive"
+rm -f $archive.asc
+gpg --armor --detach-sign $archive
+gpg --verify $archive.asc $archive
