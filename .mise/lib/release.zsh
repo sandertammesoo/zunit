@@ -66,9 +66,12 @@ remote_tag_exists() {
 	git ls-remote --exit-code --tags origin "refs/tags/$1" >/dev/null
 }
 
-# confirm <question>: continue only if the user types yes.
+# confirm <question>: continue only if the user types yes. The answer comes from the terminal,
+# because mise can give the task no stdin. Without a terminal, the task stops.
 confirm() {
 	local answer
-	read -r "answer?$1 Type 'yes' to continue: "
+	{ : < /dev/tty } 2>/dev/null || die "this step asks you to type yes, and there is no terminal. Run it in a terminal."
+	print -nu2 -- "$1 Type 'yes' to continue: "
+	read -r answer < /dev/tty || answer=
 	[[ $answer == yes ]] || die "stopped. Nothing changed after this point."
 }

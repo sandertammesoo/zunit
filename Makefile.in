@@ -115,8 +115,10 @@ clean:
 install-deps:
 	sudo pip install cram=='0.6.*'
 
-# Build the Zunit binary
-build:
+# Build the Zunit binary, but only if a source file or VERSION is newer than it
+build: ${EXEC}
+
+${EXEC}: ${GLOB} ${VERSION_FILE}
 	@echo Building Zunit...
 
 	# Ensure the bin directory exists
