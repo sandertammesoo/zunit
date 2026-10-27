@@ -12,11 +12,7 @@ local version=$(release_version)
 local_tag_exists v$version && die "tag v$version exists locally. Run: mise run release:bump <level>, or mise run release:cleanup"
 remote_tag_exists v$version && die "tag v$version exists on origin. Run: mise run release:bump <level>"
 
-if [[ ! -f Makefile || Makefile.in -nt Makefile ]]; then
-	say "Makefile is missing or older than Makefile.in. Running ./configure"
-	./configure
-fi
-
+ensure_makefile
 say "build and test $version"
 make build
 make test

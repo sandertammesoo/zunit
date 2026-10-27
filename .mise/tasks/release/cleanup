@@ -40,7 +40,7 @@ done
 if [[ $(git rev-parse master) == $(git rev-parse origin/master) ]]; then
 	:
 elif [[ $tip == $(git rev-parse origin/master) ]]; then
-	git branch -f master origin/master
+	git branch -q -f master origin/master
 	say "master reset to origin/master"
 else
 	say "master has commits that are not release merges and not on origin. master does not change."

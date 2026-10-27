@@ -51,6 +51,13 @@ master_in_sync() {
 		|| die "master has commits that are not on origin/master. Run: mise run release:cleanup"
 }
 
+ensure_makefile() {
+	if [[ ! -f Makefile || Makefile.in -nt Makefile ]]; then
+		say "Makefile is missing or older than Makefile.in. Running ./configure"
+		./configure
+	fi
+}
+
 local_tag_exists() {
 	git rev-parse -q --verify "refs/tags/$1" >/dev/null
 }

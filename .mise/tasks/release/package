@@ -13,6 +13,7 @@ local_tag_exists $tag || die "tag $tag does not exist. Run: mise run release:tag
 [[ -n $(gpg --list-secret-keys 2>/dev/null) ]] || die "gpg has no secret key, and the release archive must be signed. See 'Signing' in README.md"
 
 say "build bin/zunit at $tag"
+ensure_makefile
 make build
 
 # The last --prefix applies to the tracked files. Each --add-file uses the --prefix before it.
